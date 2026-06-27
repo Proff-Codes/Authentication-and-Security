@@ -1,9 +1,12 @@
 import express from "express";
 import bodyParser from "body-parser";
 import pg from "pg"
-
+import bcrypt from "bcrypt"
 const app = express();
 const port = 3000;
+
+
+const saltRounds = 10;
 
 const db = new pg.Client({
   user: "postgres",
@@ -43,12 +46,20 @@ try {
 if(checkResult.rows.length > 0){
   res.send("Email already exist.")
 } else{
-  // else insert user email and password into the database
-  const result = await db.query("INSERT INTO users (email , password) VALUES ($1,$2)",
-[email,password]
+  bcrypt.hash(password, saltRounds , async (err , hash)=>{
+    if(err){
+      console.log("Error hashing password : ", err)
+    } else{
+    const result = await db.query("INSERT INTO users (email , password) VALUES ($1,$2)",
+[email,hash]
 );
+
 // console.log(result)
 res.render("secrets.ejs")
+}
+  })
+  // else insert user email and password into the database
+
 }
   
 } catch (err) {
@@ -60,7 +71,7 @@ res.render("secrets.ejs")
 
 app.post("/login", async (req, res) => {
   const email = req.body.username
-  const password = req.body.password
+  const loginPassword = req.body.password
 
   try {
     const existingUser = await db.query("SELECT * FROM users WHERE email = $1",[
@@ -70,13 +81,20 @@ app.post("/login", async (req, res) => {
     if(existingUser.rows.length > 0){
       // returns the row of the user only
       const user = existingUser.rows[0]
-      const storedPassword = user.password
+      const storedHashedPassword = user.password
 
-      if(password === storedPassword){
-        res.render("secrets.ejs")
-      }else{
-        res.send("Incorrect email or password")
-      }
+      bcrypt.compare(loginPassword, storedHashedPassword, (err, result)=>{
+        if(err){
+          console.log("Error comparing password : ", err)
+        } else{
+          console.log("Password comparison result : ", result)
+          if(result){
+            res.render("secrets.ejs")
+          } else{
+            res.send("Incorrect email or password")
+          }
+        }
+      })
       console.log(user)
     }
     
